@@ -7,7 +7,7 @@
 <script>
 (function(){
   var p=prompt('비밀번호를 입력하세요');
-  if(p!=='jane0804'){document.documentElement.innerHTML='<body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#d63031"><h2>접근 권한이 없습니다</h2></body>';throw new Error('unauthorized');}
+  if(p!=='kakaoinsure'){document.documentElement.innerHTML='<body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#d63031"><h2>접근 권한이 없습니다</h2></body>';throw new Error('unauthorized');}
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -60,15 +60,7 @@ tr:hover td{background:#f8f9fa}
 </div>
 <div id="insight" style="background:#FAE100;color:#1a1a2e;font-size:13px;padding:12px 18px;border-radius:8px;margin-bottom:20px;line-height:1.7;display:none"></div>
 <div class="kpi-row" id="kpiRow"></div>
-<div class="charts-row">
-<div class="chart-box"><h3 id="c1Title">삼성 대비 Gap은 확대되고 있는가?</h3><canvas id="c1"></canvas></div>
-<div class="chart-box"><h3 id="c2Title">카카오·삼성 실적 추이</h3><canvas id="c2"></canvas></div>
-</div>
-<div class="charts-row" id="extraChartsRow" style="display:none">
-<div class="chart-box"><h3 id="c4Title"></h3><canvas id="c4"></canvas></div>
-<div class="chart-box"><h3 id="c5Title"></h3><canvas id="c5"></canvas></div>
-</div>
-<div class="charts-row">
+<div class="charts-row" id="yoyBarRow">
 <div class="chart-box full"><h3 id="c3Title">카카오의 성장률이 삼성을 앞서는 상품은?</h3><canvas id="c3"></canvas></div>
 </div>
 <div class="tbl-wrap" id="tblWrap" style="display:none">
@@ -77,6 +69,14 @@ tr:hover td{background:#f8f9fa}
 </div>
 <div class="charts-row" id="yoyTrendRow" style="display:none">
 <div class="chart-box full"><h3 id="c6Title"></h3><canvas id="c6"></canvas></div>
+</div>
+<div class="charts-row" id="extraChartsRow" style="display:none">
+<div class="chart-box"><h3 id="c4Title"></h3><canvas id="c4"></canvas></div>
+<div class="chart-box"><h3 id="c5Title"></h3><canvas id="c5"></canvas></div>
+</div>
+<div class="charts-row" id="gapChartsRow">
+<div class="chart-box"><h3 id="c1Title">삼성 대비 Gap은 확대되고 있는가?</h3><canvas id="c1"></canvas></div>
+<div class="chart-box"><h3 id="c2Title">카카오·삼성 실적 추이</h3><canvas id="c2"></canvas></div>
 </div>
 <div class="footer">Chart.js CDN을 사용하므로 인터넷 연결이 필요합니다 · 데이터 기준: raw CSV 월도별 · 카카오/삼성만 표시</div>
 <script>
@@ -351,12 +351,12 @@ function render(){
   }
   document.getElementById('c3Title').textContent=hideYoY?'':month.slice(0,4)+'.'+month.slice(4)+' 기준 — 상품별 YoY 비교 ('+METRIC_LABELS[metric]+')';
   if(chart3) chart3.destroy();
-  const c3Wrap = document.getElementById('c3').parentElement.parentElement;
+  const c3Wrap = document.getElementById('yoyBarRow');
   if(hideYoY){
     c3Wrap.style.display='none';
     chart3=null;
-  }else{
-    c3Wrap.style.display='grid';
+          {label:'카카오 YoY',data:yoyItems.map(i=>i.kakao!==null?i.kakao*100:null),backgroundColor:'#FEE500',borderColor:'#5D4037',borderWidth:1,minBarLength:4},
+          {label:'삼성 YoY',data:yoyItems.map(i=>i.samsung!==null?i.samsung*100:null),backgroundColor:'#90CAF9',borderColor:'#1565C0',borderWidth:1,minBarLength:4}
     if(yoyItems.length>0){
       chart3=new Chart(document.getElementById('c3'),{type:'bar',data:{
         labels:yoyItems.map(i=>i.product),
@@ -474,7 +474,7 @@ fMonth.addEventListener('change',render);
 fProduct.addEventListener('change',()=>{
   const p=fProduct.value;
   const piOpt=fMetric.querySelector('option[value="피보험자"]');
-  if(p==='해외여행'||p==='장기체류'||p==='전체'){piOpt.style.display='';}
+  if(p==='해외여행'||p==='전체'){piOpt.style.display='';}
   else{piOpt.style.display='none';if(fMetric.value==='피보험자')fMetric.value='계약건수';}
   render();
 });
