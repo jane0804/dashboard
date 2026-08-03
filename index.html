@@ -10,7 +10,6 @@
   if(p!=='jane0804'){document.documentElement.innerHTML='<body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#d63031"><h2>접근 권한이 없습니다</h2></body>';throw new Error('unauthorized');}
 })();
 </script>
-<title>카카오–삼성 실적 비교 대시보드</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>if(typeof Chart==='undefined'){document.addEventListener('DOMContentLoaded',()=>{document.body.insertAdjacentHTML('afterbegin','<div style="background:#d63031;color:#fff;padding:12px;text-align:center;font-size:13px;border-radius:6px;margin-bottom:12px">⚠ Chart.js를 불러올 수 없습니다. 인터넷 연결을 확인해주세요. 차트는 표시되지 않으나 KPI와 상세표는 정상 동작합니다.</div>');});}</script>
 <style>
@@ -53,11 +52,11 @@ tr:hover td{background:#f8f9fa}
 <div style="font-size:12px;color:#636e72" id="dateLabel"></div>
 </div>
 <div class="warn" id="warn"></div>
-<div style="background:#2d3436;color:#fff;font-size:12px;font-weight:600;padding:8px 16px;border-radius:6px;margin-bottom:16px;text-align:center">📌 월도별 실적은 마감 이후 업데이트됩니다</div>
+<div style="background:#2d3436;color:#fff;font-size:12px;font-weight:600;padding:8px 16px;border-radius:6px;margin-bottom:16px;text-align:center">📌 월도별 실적은 차월 첫째주 업데이트되며, 데이터는 배링기준입니다</div>
 <div class="filters">
 <div><label>기준월</label><select id="fMonth"></select></div>
 <div><label>상품</label><select id="fProduct"></select></div>
-<div><label>지표</label><select id="fMetric"><option value="계약건수">판매건수 (건)</option><option value="보험료">보험료 (백만원)</option></select></div>
+<div><label>지표</label><select id="fMetric"><option value="계약건수">판매건수 (건)</option><option value="보험료">보험료 (백만원)</option><option value="피보험자">피보험자수 (명)</option></select></div>
 </div>
 <div id="insight" style="background:#FAE100;color:#1a1a2e;font-size:13px;padding:12px 18px;border-radius:8px;margin-bottom:20px;line-height:1.7;display:none"></div>
 <div class="kpi-row" id="kpiRow"></div>
@@ -72,7 +71,13 @@ tr:hover td{background:#f8f9fa}
 <div class="charts-row">
 <div class="chart-box full"><h3 id="c3Title">카카오의 성장률이 삼성을 앞서는 상품은?</h3><canvas id="c3"></canvas></div>
 </div>
-<div class="tbl-wrap" id="tblWrap" style="display:none"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+<div class="tbl-wrap" id="tblWrap" style="display:none">
+<h3 id="tblTitle" style="font-size:14px;font-weight:600;color:#2d3436;margin-bottom:10px;padding-left:4px"></h3>
+<table id="tbl"><thead></thead><tbody></tbody></table>
+</div>
+<div class="charts-row" id="yoyTrendRow" style="display:none">
+<div class="chart-box full"><h3 id="c6Title"></h3><canvas id="c6"></canvas></div>
+</div>
 <div class="footer">Chart.js CDN을 사용하므로 인터넷 연결이 필요합니다 · 데이터 기준: raw CSV 월도별 · 카카오/삼성만 표시</div>
 <script>
 // === EMBEDDED DATA (월도별, 카카오+삼성, 자녀=소분류합산) ===
@@ -154,9 +159,10 @@ function fmt(v,type){
   if(type==='num') return v.toLocaleString('ko-KR');
   if(type==='num_건') return v.toLocaleString('ko-KR')+' 건';
   if(type==='num_백만') return v.toLocaleString('ko-KR')+' 백만원';
+  if(type==='num_명') return v.toLocaleString('ko-KR')+' 명';
   return String(v);
 }
-function numFmt(metric){ return metric==='계약건수'?'num_건':'num_백만'; }
+function numFmt(metric){ return metric==='계약건수'?'num_건':metric==='보험료'?'num_백만':'num_명'; }
 
 // === RENDERING ===
 const fMonth=document.getElementById('fMonth');
@@ -166,7 +172,7 @@ const fMetric=document.getElementById('fMetric');
 // Populate filters
 {const o=document.createElement('option');o.value='전체';o.textContent='전체';fProduct.insertBefore(o,fProduct.firstChild);}
 {const o=document.createElement('option');o.value='전체';o.textContent='전체';fMonth.appendChild(o);}
-PRODUCTS.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;fProduct.appendChild(o)});
+PRODUCTS.forEach(p=>{if(p==='골프')return;const o=document.createElement('option');o.value=p;o.textContent=p;fProduct.appendChild(o)});
 [...ALL_MONTHS].reverse().forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m.slice(0,4)+'.'+m.slice(4);fMonth.appendChild(o)});
 fMonth.value=ALL_MONTHS[ALL_MONTHS.length-1];
 fProduct.value=PRODUCTS[0];
@@ -283,6 +289,7 @@ function render(){
   if(window._chart5){window._chart5.destroy();window._chart5=null;}
 
   if(product==='전체'){
+    // 상품 전체: 양사 YoY 추이 선그래프 (c3 영역 대신 여기서 표시)
     extraRow.style.display='grid';
     const yoyMonths=ALL_MONTHS.filter(m=>{
       return aggYoy('전체',metric,'카카오',m)!==null||aggYoy('전체',metric,'삼성',m)!==null;
@@ -291,7 +298,7 @@ function render(){
     const sYoyLine=yoyMonths.map(m=>{const v=aggYoy('전체',metric,'삼성',m);return v!==null?v*100:null;});
     document.getElementById('c4Title').textContent='전체 상품 — 카카오·삼성 YoY 증가율 추이 ('+METRIC_LABELS[metric]+')';
     document.getElementById('c5Title').textContent='';
-    document.getElementById('c5').style.display='none';
+    document.getElementById('c5').parentElement.style.display='none';
     document.getElementById('c4').parentElement.classList.add('full');
     window._chart4=new Chart(document.getElementById('c4'),{type:'line',data:{
       labels:yoyMonths.map(m=>m.slice(2,4)+'.'+m.slice(4)),
@@ -301,10 +308,12 @@ function render(){
       ]
     },options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top',labels:{font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.parsed.y!==null?ctx.parsed.y.toFixed(1)+'%':'N/A')}}},scales:{x:{ticks:{font:{size:10},maxRotation:45}},y:{grid:{color:ctx=>ctx.tick.value===0?'#2d3436':'#f1f3f5'},ticks:{callback:v=>v+'%'}}}}});
   } else if(product==='해외여행'){
+    // 해외여행: 건당 피보험자수 추이 + 건당 보험료 추이
     extraRow.style.display='grid';
-    document.getElementById('c5').style.display='block';
+    document.getElementById('c5').parentElement.style.display='';
     document.getElementById('c4').parentElement.classList.remove('full');
     const travelMonths=ALL_MONTHS.filter(m=>getVal('해외여행','계약건수','카카오',m)!==null&&getVal('해외여행','피보험자','카카오',m)!==null);
+    // 건당 피보험자수
     const kPer=travelMonths.map(m=>{const cnt=getVal('해외여행','계약건수','카카오',m),ins=getVal('해외여행','피보험자','카카오',m);return(cnt&&ins)?Math.round(ins/cnt*100)/100:null;});
     const sPer=travelMonths.map(m=>{const cnt=getVal('해외여행','계약건수','삼성',m),ins=getVal('해외여행','피보험자','삼성',m);return(cnt&&ins)?Math.round(ins/cnt*100)/100:null;});
     document.getElementById('c4Title').textContent='해외여행 — 건당 피보험자수 추이 (명/건)';
@@ -315,6 +324,7 @@ function render(){
         {label:'삼성',data:sPer,borderColor:'#1565C0',tension:0.3,pointRadius:2,spanGaps:false}
       ]
     },options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top',labels:{font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.parsed.y!==null?ctx.parsed.y.toFixed(2)+' 명/건':'N/A')}}},scales:{x:{ticks:{font:{size:10},maxRotation:45}},y:{ticks:{callback:v=>v.toFixed(1)}}}}});
+    // 건당 보험료
     const kPrem=travelMonths.map(m=>{const cnt=getVal('해외여행','계약건수','카카오',m),p=getVal('해외여행','보험료','카카오',m);return(cnt&&p)?Math.round(p/cnt*1000000):null;});
     const sPrem=travelMonths.map(m=>{const cnt=getVal('해외여행','계약건수','삼성',m),p=getVal('해외여행','보험료','삼성',m);return(cnt&&p)?Math.round(p/cnt*1000000):null;});
     document.getElementById('c5Title').textContent='해외여행 — 건당 보험료 추이 (원/건)';
@@ -347,28 +357,52 @@ function render(){
     chart3=null;
   }else{
     c3Wrap.style.display='grid';
-  if(!hideYoY&&yoyItems.length>0){
-    chart3=new Chart(document.getElementById('c3'),{type:'bar',data:{
-      labels:yoyItems.map(i=>i.product),
-      datasets:[
-        {label:'카카오 YoY',data:yoyItems.map(i=>i.kakao!==null?i.kakao*100:null),backgroundColor:'#FEE500',borderColor:'#5D4037',borderWidth:1},
-        {label:'삼성 YoY',data:yoyItems.map(i=>i.samsung!==null?i.samsung*100:null),backgroundColor:'#90CAF9',borderColor:'#1565C0',borderWidth:1}
-      ]
-    },options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top',labels:{font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.parsed.y!==null?ctx.parsed.y.toFixed(1)+'%':'N/A')}}},scales:{y:{grid:{color:ctx=>ctx.tick.value===0?'#2d3436':'#f1f3f5'},ticks:{callback:v=>v+'%'}},x:{ticks:{font:{size:12}}}}}});
-  }
+    if(yoyItems.length>0){
+      chart3=new Chart(document.getElementById('c3'),{type:'bar',data:{
+        labels:yoyItems.map(i=>i.product),
+        datasets:[
+          {label:'카카오 YoY',data:yoyItems.map(i=>i.kakao!==null?i.kakao*100:null),backgroundColor:'#FEE500',borderColor:'#5D4037',borderWidth:1},
+          {label:'삼성 YoY',data:yoyItems.map(i=>i.samsung!==null?i.samsung*100:null),backgroundColor:'#90CAF9',borderColor:'#1565C0',borderWidth:1}
+        ]
+      },options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top',labels:{font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.parsed.y!==null?ctx.parsed.y.toFixed(1)+'%':'N/A')}}},scales:{y:{grid:{color:ctx=>ctx.tick.value===0?'#2d3436':'#f1f3f5'},ticks:{callback:v=>v+'%'}},x:{ticks:{font:{size:12}}}}}});
+    }
   }
 
   // Detail Table
   document.getElementById('tblWrap').style.display=(product==='전체')?'block':'none';
   renderTable(month,metric);
+
+  // YoY Trend chart (기준월 무관, 상품=개별이든 전체이든 항상 표시)
+  const yoyTrendRow = document.getElementById('yoyTrendRow');
+  if(window._chart6){window._chart6.destroy();window._chart6=null;}
+  if(product!=='전체'){
+    yoyTrendRow.style.display='grid';
+    const yMonths=ALL_MONTHS.filter(m=>{
+      return m>='202407'&&(aggYoy(product,metric,'카카오',m)!==null||aggYoy(product,metric,'삼성',m)!==null);
+    });
+    const kLine=yMonths.map(m=>{const v=aggYoy(product,metric,'카카오',m);return v!==null?v*100:null;});
+    const sLine=yMonths.map(m=>{const v=aggYoy(product,metric,'삼성',m);return v!==null?v*100:null;});
+    document.getElementById('c6Title').textContent=product+' — 카카오·삼성 YoY 증가율 추이 ('+METRIC_LABELS[metric]+')';
+    window._chart6=new Chart(document.getElementById('c6'),{type:'line',data:{
+      labels:yMonths.map(m=>m.slice(2,4)+'.'+m.slice(4)),
+      datasets:[
+        {label:'카카오 YoY',data:kLine,borderColor:'#5D4037',pointBackgroundColor:'#FEE500',tension:0.3,pointRadius:2,spanGaps:false},
+        {label:'삼성 YoY',data:sLine,borderColor:'#1565C0',tension:0.3,pointRadius:2,spanGaps:false}
+      ]
+    },options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top',labels:{font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.parsed.y!==null?ctx.parsed.y.toFixed(1)+'%':'N/A')}}},scales:{x:{ticks:{font:{size:10},maxRotation:45}},y:{grid:{color:ctx=>ctx.tick.value===0?'#2d3436':'#f1f3f5'},ticks:{callback:v=>v+'%'}}}}});
+  } else {
+    yoyTrendRow.style.display='none';
+  }
 }
 
 let sortCol=-1,sortAsc=true;
 function renderTable(month,metric){
   const isAllMonth = month==='전체';
   const isAllProduct = fProduct.value==='전체';
-  const hideYoY = isAllMonth || isAllProduct;
+  const hideYoY = isAllMonth;
   const productList = isAllProduct ? PRODUCTS : [fProduct.value];
+  const monthLabel = isAllMonth?'전체 기간':month.slice(0,4)+'.'+month.slice(4);
+  document.getElementById('tblTitle').textContent='📊 '+monthLabel+' 기준 · '+METRIC_LABELS[metric]+' · 상품별 실적 비교';
   const rows=[];
   for(const p of productList){
     const kv=getAggVal(p,metric,'카카오',month);
@@ -437,7 +471,13 @@ function renderTable(month,metric){
 }
 // Event listeners
 fMonth.addEventListener('change',render);
-fProduct.addEventListener('change',render);
+fProduct.addEventListener('change',()=>{
+  const p=fProduct.value;
+  const piOpt=fMetric.querySelector('option[value="피보험자"]');
+  if(p==='해외여행'||p==='장기체류'||p==='전체'){piOpt.style.display='';}
+  else{piOpt.style.display='none';if(fMetric.value==='피보험자')fMetric.value='계약건수';}
+  render();
+});
 fMetric.addEventListener('change',render);
 render();
 </script>
